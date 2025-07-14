@@ -11,80 +11,78 @@ namespace PyrusApiClient
 {
     class Program
     {
-       
-            static async Task Main(string[] args)
+        static async Task Main(string[] args)
+        {
+            try
             {
-                try
+                var config = LoadConfig();
+                if (config == null || string.IsNullOrWhiteSpace(config.AuthToken))
                 {
-                    var config = LoadConfig();
-                    if (config == null || string.IsNullOrWhiteSpace(config.AuthToken))
+                    Console.WriteLine("Не удалось загрузить конфигурацию или токен отсутствует.");
+                    return;
+                }
+
+                Console.WriteLine("Выберите тип отчета:");
+                Console.WriteLine("1 - Отчет за один день");
+                Console.WriteLine("2 - Отчет за период");
+                Console.Write("Ваш выбор: ");
+
+                var choice = Console.ReadLine();
+                DateTime startDate, endDate;
+                string dateRangeFormatted;
+
+                if (choice == "1")
+                {
+                    Console.Write("Введите дату (например, 18.06.2025): ");
+                    if (!DateTime.TryParse(Console.ReadLine(), out startDate))
                     {
-                        Console.WriteLine("Не удалось загрузить конфигурацию или токен отсутствует.");
+                        Console.WriteLine("Некорректный формат даты.");
+                        return;
+                    }
+                    endDate = startDate;
+                    dateRangeFormatted = startDate.ToString("dd.MM.yyyy");
+                }
+                else if (choice == "2")
+                {
+                    Console.Write("Введите начальную дату (например, 18.06.2025): ");
+                    if (!DateTime.TryParse(Console.ReadLine(), out startDate))
+                    {
+                        Console.WriteLine("Некорректный формат даты.");
                         return;
                     }
 
-                    Console.WriteLine("Выберите тип отчета:");
-                    Console.WriteLine("1 - Отчет за один день");
-                    Console.WriteLine("2 - Отчет за период");
-                    Console.Write("Ваш выбор: ");
-
-                    var choice = Console.ReadLine();
-                    DateTime startDate, endDate;
-                    string dateRangeFormatted;
-
-                    if (choice == "1")
+                    Console.Write("Введите конечную дату (например, 24.06.2025): ");
+                    if (!DateTime.TryParse(Console.ReadLine(), out endDate))
                     {
-                        Console.Write("Введите дату (например, 18.06.2025): ");
-                        if (!DateTime.TryParse(Console.ReadLine(), out startDate))
-                        {
-                            Console.WriteLine("Некорректный формат даты.");
-                            return;
-                        }
-                        endDate = startDate;
-                        dateRangeFormatted = startDate.ToString("dd.MM.yyyy");
-                    }
-                    else if (choice == "2")
-                    {
-                        Console.Write("Введите начальную дату (например, 18.06.2025): ");
-                        if (!DateTime.TryParse(Console.ReadLine(), out startDate))
-                        {
-                            Console.WriteLine("Некорректный формат даты.");
-                            return;
-                        }
-
-                        Console.Write("Введите конечную дату (например, 24.06.2025): ");
-                        if (!DateTime.TryParse(Console.ReadLine(), out endDate))
-                        {
-                            Console.WriteLine("Некорректный формат даты.");
-                            return;
-                        }
-
-                        dateRangeFormatted = $"{startDate:dd.MM}-{endDate:dd.MM}.{startDate:yyyy}";
-                    }
-                    else
-                    {
-                        Console.WriteLine("Некорректный выбор.");
+                        Console.WriteLine("Некорректный формат даты.");
                         return;
                     }
 
-                    using (var client = new HttpClient())
-                    {
-                        client.BaseAddress = new Uri(config.ApiBaseUrl);
-                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.AuthToken}");
-                        client.DefaultRequestHeaders.Accept.Add(
-                            new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    dateRangeFormatted = $"{startDate:dd.MM}-{endDate:dd.MM}.{startDate:yyyy}";
+                }
+                else
+                {
+                    Console.WriteLine("Некорректный выбор.");
+                    return;
+                }
 
+                using (var client = new HttpClient())
+                {
+                    client.BaseAddress = new Uri(config.ApiBaseUrl);
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.AuthToken}");
+                    client.DefaultRequestHeaders.Accept.Add(
+                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-                        // Шаг 1: Получение всех задач в Telegram
-                        var telegramTasks = await GetTasksCount(client, new
+                    // Шаг 1: Получение всех задач в Telegram
+                    var telegramTasks = await GetTasksCount(client, new
                     {
                         field_ids = "",
                         fld434 = "5",
                         include_archived = "y",
-                            created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                            created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                            closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
-                        });
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                    });
 
                     // Шаг 2: Фильтрация задач по условиям
                     var filteredTasks = await GetTasksCount(client, new
@@ -185,28 +183,89 @@ namespace PyrusApiClient
                     var notParticipatedRate = borisTasks > 0 ? (double)borisNotParticipated / borisTasks * 100 : 0;
                     var notAssignedRate = filteredTasks > 0 ? (double)notAssignedToBoris / filteredTasks * 100 : 0;
 
-                    // Вывод отчета
-                    Console.WriteLine($"\n📊 Отчет за {dateRangeFormatted}");
-                    Console.WriteLine("====================================");
-                    Console.WriteLine("\n#Всего задач в телеграм: " + telegramTasks);
-                    Console.WriteLine("#Подходящих под условия (Базовый договор, Cloud, ...): " + filteredTasks);
-                    Console.WriteLine("#Передано на Бориса: " + borisTasks);
-                    Console.WriteLine("!Не передано на Бориса: " + notAssignedToBoris);
-                    Console.WriteLine("#Операторы отметили, что Борис не участвовал: " + borisNotParticipated);
-                    Console.WriteLine("#Полноценно пообщался: " + borisParticipated + " задач");
-                    Console.WriteLine("#Предложил решение: " + borisSolved);
-                    Console.WriteLine("#Подсказал/помог: " + borisHelped);
-                    Console.WriteLine("#Ответил неверно: " + borisWrongAnswers);
+                    // Формирование тела отчета
+                    var reportBody = new StringBuilder();
+                    reportBody.AppendLine($"📊 Отчет за {dateRangeFormatted}");
+                    reportBody.AppendLine("====================================");
+                    reportBody.AppendLine("\n#Всего задач в телеграм: " + telegramTasks);
+                    reportBody.AppendLine("#Подходящих под условия (Базовый договор, Cloud, ...): " + filteredTasks);
+                    reportBody.AppendLine("#Передано на Бориса: " + borisTasks);
+                    reportBody.AppendLine("!Не передано на Бориса: " + notAssignedToBoris);
+                    reportBody.AppendLine("#Операторы отметили, что Борис не участвовал: " + borisNotParticipated);
+                    reportBody.AppendLine("#Полноценно пообщался: " + borisParticipated + " задач");
+                    reportBody.AppendLine("#Предложил решение: " + borisSolved);
+                    reportBody.AppendLine("#Подсказал/помог: " + borisHelped);
+                    reportBody.AppendLine("#Ответил неверно: " + borisWrongAnswers);
 
-                    Console.WriteLine("\n🧾 Итоговая аналитика:");
+                    reportBody.AppendLine("\n🧾 Итоговая аналитика:");
+                    reportBody.AppendLine("====================================");
+                    reportBody.AppendLine($"Борису передано {Math.Round((double)borisTasks / telegramTasks * 100, 1)}% от всех задач ({borisTasks} из {telegramTasks})");
+                    reportBody.AppendLine($"Из переданных задач он полноценно участвовал в {borisParticipated} задачах ({Math.Round(borisParticipationRate, 1)}% от полученных)");
+                    reportBody.AppendLine($"Эффективность в полезных задачах — {Math.Round(effectivenessRate, 1)}% ({borisSolved + borisHelped} из {borisParticipated}), что составляет {Math.Round(overallEffectiveness, 1)}% от всех задач");
+                    reportBody.AppendLine($"В {borisWrongAnswers} задачах дал ошибочные или нерелевантные ответы ({Math.Round(wrongAnswersRate, 1)}% среди задач с участием)");
+                    reportBody.AppendLine($"По мнению операторов, не участвовал в {borisNotParticipated} задачах — это {Math.Round(notParticipatedRate, 1)}% от полученных");
+                    reportBody.AppendLine($"Остались без назначения {notAssignedToBoris} задачи — это {Math.Round(notAssignedRate, 1)}% от подходящих");
 
-                    Console.WriteLine("====================================");
-                    Console.WriteLine($"Борису передано {Math.Round((double)borisTasks / telegramTasks * 100, 1)}% от всех задач ({borisTasks} из {telegramTasks})");
-                    Console.WriteLine($"Из переданных задач он полноценно участвовал в {borisParticipated} задачах ({Math.Round(borisParticipationRate, 1)}% от полученных)");
-                    Console.WriteLine($"Эффективность в полезных задачах — {Math.Round(effectivenessRate, 1)}% ({borisSolved + borisHelped} из {borisParticipated}), что составляет {Math.Round(overallEffectiveness, 1)}% от всех задач");
-                    Console.WriteLine($"В {borisWrongAnswers} задачах дал ошибочные или нерелевантные ответы ({Math.Round(wrongAnswersRate, 1)}% среди задач с участием)");
-                    Console.WriteLine($"По мнению операторов, не участвовал в {borisNotParticipated} задачах — это {Math.Round(notParticipatedRate, 1)}% от полученных");
-                    Console.WriteLine($"Остались без назначения {notAssignedToBoris} задачи — это {Math.Round(notAssignedRate, 1)}% от подходящих");
+                    // Вывод отчета в консоль
+                    Console.WriteLine(reportBody.ToString());
+
+                    // Создание задачи в Pyrus с отчетом
+                    var taskRequest = new
+                    {
+                        form_id = 469817,
+                        author = new { id = config.AuthorId },
+                        fields = new List<object> // Явно указываем тип коллекции
+                        {
+                            new
+                            {
+                                id = 10,
+                                type = "person",
+                                name = "Ответственный",
+                                value = new { id = config.ResponsibleId }
+                            },
+                            new
+                            {
+                                id = 1,
+                                value = $"[Отчет работа Бориса] [{startDate:yyyy-MM-dd}-{endDate:yyyy-MM-dd}]"
+                            },
+                            new
+                            {
+                                id = 2,
+                                value = reportBody.ToString()
+                            },
+                            new
+                            {
+                                id = 16,
+                                value = new { choice_id = 1 }
+                            },
+                            new
+                            {
+                                id = 15,
+                                value = new { choice_id = 1 }
+                            },
+                            new
+                            {
+                                id = 434,
+                                value = new { choice_id = 1 }
+                            },
+                            new
+                            {
+                                id = 805,
+                                value = new { choice_id = 1 }
+                            },
+                            new
+                            {
+                                id = 766,
+                                value = new { choice_id = 1 }
+                            }
+                        }
+                    };
+
+                    var taskResponse = await CreateTask(client, taskRequest);
+                    if (taskResponse != null && taskResponse.task != null)
+                    {
+                        Console.WriteLine($"\nЗадача успешно создана: {config.ApiBaseUrl}/#task/{taskResponse.task.id}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -239,6 +298,26 @@ namespace PyrusApiClient
             }
         }
 
+        static async Task<dynamic> CreateTask(HttpClient client, object requestBody)
+        {
+            var jsonContent = JsonConvert.SerializeObject(requestBody);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync("/v4/tasks", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                return JsonConvert.DeserializeObject<dynamic>(responseContent);
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Ошибка при создании задачи: {errorContent}");
+                return null;
+            }
+        }
+
         static Config LoadConfig()
         {
             try
@@ -249,7 +328,9 @@ namespace PyrusApiClient
                     var defaultConfig = new Config
                     {
                         ApiBaseUrl = "https://api.pyrus.com",
-                        AuthToken = "your_auth_token_here"
+                        AuthToken = "your_auth_token_here",
+                        AuthorId = 1223544, // ID автора задачи
+                        ResponsibleId = 1223544 // ID ответственного
                     };
                     File.WriteAllText(configPath, JsonConvert.SerializeObject(defaultConfig, Formatting.Indented));
                     Console.WriteLine("Создан файл конфигурации. Заполните его своими данными.");
@@ -270,6 +351,8 @@ namespace PyrusApiClient
     {
         public string ApiBaseUrl { get; set; }
         public string AuthToken { get; set; }
+        public int AuthorId { get; set; }
+        public int ResponsibleId { get; set; } 
     }
 
     public class TasksResponse
