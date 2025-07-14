@@ -11,55 +11,80 @@ namespace PyrusApiClient
 {
     class Program
     {
-        static async Task Main(string[] args)
-        {
-            try
+       
+            static async Task Main(string[] args)
             {
-                // Загрузка конфигурации
-                var config = LoadConfig();
-
-                if (config == null || string.IsNullOrWhiteSpace(config.AuthToken))
+                try
                 {
-                    Console.WriteLine("Не удалось загрузить конфигурацию или токен отсутствует.");
-                    Console.WriteLine("Проверьте файл config.json и наличие токена авторизации.");
-                    return;
-                }
+                    var config = LoadConfig();
+                    if (config == null || string.IsNullOrWhiteSpace(config.AuthToken))
+                    {
+                        Console.WriteLine("Не удалось загрузить конфигурацию или токен отсутствует.");
+                        return;
+                    }
 
-                // Запрос даты у пользователя
-                Console.Write("Введите дату (например, 09.07.2025): ");
-                var dateInput = Console.ReadLine();
-                if (!DateTime.TryParse(dateInput, out DateTime reportDate))
-                {
-                    Console.WriteLine("Некорректный формат даты.");
-                    return;
-                }
+                    Console.WriteLine("Выберите тип отчета:");
+                    Console.WriteLine("1 - Отчет за один день");
+                    Console.WriteLine("2 - Отчет за период");
+                    Console.Write("Ваш выбор: ");
 
-                // Установка временных границ
-                var createdAfter = reportDate.Date;
-                var createdBefore = createdAfter.AddDays(1);
-                var closedBefore = DateTime.UtcNow;
+                    var choice = Console.ReadLine();
+                    DateTime startDate, endDate;
+                    string dateRangeFormatted;
 
-                // Создание HTTP клиента
-                using (var client = new HttpClient())
-                {
-                    // Установка базового адреса API
-                    client.BaseAddress = new Uri(config.ApiBaseUrl);
+                    if (choice == "1")
+                    {
+                        Console.Write("Введите дату (например, 18.06.2025): ");
+                        if (!DateTime.TryParse(Console.ReadLine(), out startDate))
+                        {
+                            Console.WriteLine("Некорректный формат даты.");
+                            return;
+                        }
+                        endDate = startDate;
+                        dateRangeFormatted = startDate.ToString("dd.MM.yyyy");
+                    }
+                    else if (choice == "2")
+                    {
+                        Console.Write("Введите начальную дату (например, 18.06.2025): ");
+                        if (!DateTime.TryParse(Console.ReadLine(), out startDate))
+                        {
+                            Console.WriteLine("Некорректный формат даты.");
+                            return;
+                        }
 
-                    // Добавление заголовка авторизации с токеном
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.AuthToken}");
-                    client.DefaultRequestHeaders.Accept.Add(
-                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                        Console.Write("Введите конечную дату (например, 24.06.2025): ");
+                        if (!DateTime.TryParse(Console.ReadLine(), out endDate))
+                        {
+                            Console.WriteLine("Некорректный формат даты.");
+                            return;
+                        }
 
-                    // Шаг 1: Получение всех задач в Telegram
-                    var telegramTasks = await GetTasksCount(client, new
+                        dateRangeFormatted = $"{startDate:dd.MM}-{endDate:dd.MM}.{startDate:yyyy}";
+                    }
+                    else
+                    {
+                        Console.WriteLine("Некорректный выбор.");
+                        return;
+                    }
+
+                    using (var client = new HttpClient())
+                    {
+                        client.BaseAddress = new Uri(config.ApiBaseUrl);
+                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.AuthToken}");
+                        client.DefaultRequestHeaders.Accept.Add(
+                            new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+
+                        // Шаг 1: Получение всех задач в Telegram
+                        var telegramTasks = await GetTasksCount(client, new
                     {
                         field_ids = "",
                         fld434 = "5",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
-                    });
+                            created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        });
 
                     // Шаг 2: Фильтрация задач по условиям
                     var filteredTasks = await GetTasksCount(client, new
@@ -69,9 +94,9 @@ namespace PyrusApiClient
                         fld650 = "76365689,76365693,80222870,77549497,77549500",
                         fld651 = "76365689,76365693,80222870,77549497,77549500",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Шаг 3: Задачи, переданные на Бориса
@@ -81,9 +106,9 @@ namespace PyrusApiClient
                         fld434 = "5",
                         fld805 = "2,3,4,5",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Шаг 4: Операторы отметили, что Борис не участвовал
@@ -94,9 +119,9 @@ namespace PyrusApiClient
                         fld805 = "2,3,4,5",
                         fld822 = "4",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Шаг 5: Борис полноценно пообщался
@@ -107,9 +132,9 @@ namespace PyrusApiClient
                         fld805 = "2,3,4,5",
                         fld822 = "1,2,3",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Шаг 6: Предложил точное решение
@@ -120,9 +145,9 @@ namespace PyrusApiClient
                         fld805 = "2,3,4,5",
                         fld822 = "1",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Шаг 7: Подсказал/помог
@@ -133,9 +158,9 @@ namespace PyrusApiClient
                         fld805 = "2,3,4,5",
                         fld822 = "2",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Шаг 8: Ответил неверно
@@ -146,9 +171,9 @@ namespace PyrusApiClient
                         fld805 = "2,3,4,5",
                         fld822 = "3",
                         include_archived = "y",
-                        created_after = createdAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        created_before = createdBefore.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        closed_before = closedBefore.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        created_after = startDate.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        created_before = endDate.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        closed_before = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     });
 
                     // Расчеты для аналитики
@@ -161,6 +186,8 @@ namespace PyrusApiClient
                     var notAssignedRate = filteredTasks > 0 ? (double)notAssignedToBoris / filteredTasks * 100 : 0;
 
                     // Вывод отчета
+                    Console.WriteLine($"\n📊 Отчет за {dateRangeFormatted}");
+                    Console.WriteLine("====================================");
                     Console.WriteLine("\n#Всего задач в телеграм: " + telegramTasks);
                     Console.WriteLine("#Подходящих под условия (Базовый договор, Cloud, ...): " + filteredTasks);
                     Console.WriteLine("#Передано на Бориса: " + borisTasks);
@@ -172,6 +199,8 @@ namespace PyrusApiClient
                     Console.WriteLine("#Ответил неверно: " + borisWrongAnswers);
 
                     Console.WriteLine("\n🧾 Итоговая аналитика:");
+
+                    Console.WriteLine("====================================");
                     Console.WriteLine($"Борису передано {Math.Round((double)borisTasks / telegramTasks * 100, 1)}% от всех задач ({borisTasks} из {telegramTasks})");
                     Console.WriteLine($"Из переданных задач он полноценно участвовал в {borisParticipated} задачах ({Math.Round(borisParticipationRate, 1)}% от полученных)");
                     Console.WriteLine($"Эффективность в полезных задачах — {Math.Round(effectivenessRate, 1)}% ({borisSolved + borisHelped} из {borisParticipated}), что составляет {Math.Round(overallEffectiveness, 1)}% от всех задач");
@@ -182,8 +211,7 @@ namespace PyrusApiClient
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Произошла ошибка: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
+                Console.WriteLine($"Ошибка: {ex.Message}");
             }
 
             Console.WriteLine("\nНажмите любую клавишу для выхода...");
@@ -192,54 +220,25 @@ namespace PyrusApiClient
 
         static async Task<int> GetTasksCount(HttpClient client, object requestBody)
         {
-            try
+            var jsonContent = JsonConvert.SerializeObject(requestBody);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync("/v4/forms/469817/register", content);
+
+            if (response.IsSuccessStatusCode)
             {
-                var jsonContent = JsonConvert.SerializeObject(requestBody);
-                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-                var response = await client.PostAsync("/v4/forms/469817/register", content);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseContent = await response.Content.ReadAsStringAsync();
-                    var tasksResponse = JsonConvert.DeserializeObject<TasksResponse>(responseContent);
-                    return tasksResponse?.Tasks?.Count ?? 0;
-                }
-                else
-                {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    var error = JsonConvert.DeserializeObject<ApiError>(errorContent);
-
-                    Console.WriteLine($"Ошибка при запросе: {response.StatusCode} - {response.ReasonPhrase}");
-                    Console.WriteLine($"Код ошибки: {error?.ErrorCode}");
-                    Console.WriteLine($"Сообщение: {error?.Error}");
-
-                    if (error?.ErrorCode == "access_denied_project")
-                    {
-                        Console.WriteLine("\n⚠️ Внимание: Нет доступа к указанной форме!");
-                        Console.WriteLine("1. Проверьте правильность ID формы (469817)");
-                        Console.WriteLine("2. Убедитесь, что ваш API-токен имеет права на эту форму");
-                        Console.WriteLine("3. Обратитесь к администратору Pyrus для получения доступа");
-                    }
-
-                    return 0;
-                }
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var tasksResponse = JsonConvert.DeserializeObject<TasksResponse>(responseContent);
+                return tasksResponse?.Tasks?.Count ?? 0;
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"Исключение при выполнении запроса: {ex.Message}");
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Ошибка API: {errorContent}");
                 return 0;
             }
         }
 
-        public class ApiError
-        {
-            [JsonProperty("error")]
-            public string Error { get; set; }
-
-            [JsonProperty("error_code")]
-            public string ErrorCode { get; set; }
-        }
         static Config LoadConfig()
         {
             try
@@ -247,38 +246,22 @@ namespace PyrusApiClient
                 var configPath = "config.json";
                 if (!File.Exists(configPath))
                 {
-                    var exampleConfig = new Config
+                    var defaultConfig = new Config
                     {
                         ApiBaseUrl = "https://api.pyrus.com",
                         AuthToken = "your_auth_token_here"
                     };
-
-                    File.WriteAllText(configPath, JsonConvert.SerializeObject(exampleConfig, JsonFormatting.Indented));
-                    Console.WriteLine($"Создан пример конфигурационного файла: {configPath}");
-                    Console.WriteLine("Пожалуйста, заполните его своими данными и запустите приложение снова.");
+                    File.WriteAllText(configPath, JsonConvert.SerializeObject(defaultConfig, Formatting.Indented));
+                    Console.WriteLine("Создан файл конфигурации. Заполните его своими данными.");
                     return null;
                 }
 
-                var json = File.ReadAllText(configPath);
-                return JsonConvert.DeserializeObject<Config>(json);
+                return JsonConvert.DeserializeObject<Config>(File.ReadAllText(configPath));
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при загрузке конфигурации: {ex.Message}");
+                Console.WriteLine($"Ошибка загрузки конфигурации: {ex.Message}");
                 return null;
-            }
-        }
-
-        static string FormatJson(string json)
-        {
-            try
-            {
-                var obj = JsonConvert.DeserializeObject(json);
-                return JsonConvert.SerializeObject(obj, JsonFormatting.Indented);
-            }
-            catch
-            {
-                return json;
             }
         }
     }
