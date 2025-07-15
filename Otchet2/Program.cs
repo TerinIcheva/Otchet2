@@ -21,7 +21,21 @@ namespace PyrusApiClient
                     Console.WriteLine("Не удалось загрузить конфигурацию или отсутствуют логин/security_key.");
                     return;
                 }
+                using (var client = new HttpClient())
+                {
+                    client.BaseAddress = new Uri(config.ApiBaseUrl);
+                    client.DefaultRequestHeaders.Accept.Add(
+                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
+                    // Аутентификация и получение токена
+                    var authToken = await GetAuthToken(client, config.Login, config.SecurityKey);
+                    if (string.IsNullOrWhiteSpace(authToken))
+                    {
+                        Console.WriteLine("Не удалось получить токен аутентификации. Проверьте логин и security_key.");
+                        return;
+                    }
+
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {authToken}");
                 Console.WriteLine("Выберите тип отчета:");
                 Console.WriteLine("1 - Отчет за один день");
                 Console.WriteLine("2 - Отчет за период");
@@ -65,26 +79,9 @@ namespace PyrusApiClient
                     Console.WriteLine("Некорректный выбор.");
                     return;
                 }
-
-                using (var client = new HttpClient())
-                {
-                    client.BaseAddress = new Uri(config.ApiBaseUrl);
-                    client.DefaultRequestHeaders.Accept.Add(
-                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-
-                    // Аутентификация и получение токена
-                    Console.WriteLine("Пытаюсь аутентифицироваться...");
-                    var authToken = await GetAuthToken(client, config.Login, config.SecurityKey);
-                    if (string.IsNullOrWhiteSpace(authToken))
-                    {
-                        Console.WriteLine("Не удалось получить токен аутентификации. Проверьте логин и security_key.");
-                        return;
-                    }
-
-                    Console.WriteLine("Аутентификация успешна!");
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {authToken}");
-
-                    // Шаг 1: Получение всех задач в Telegram
+                         
+                
+                // Шаг 1: Получение всех задач в Telegram
                     var telegramTasks = await GetTasksCount(client, new
                     {
                         field_ids = "",
