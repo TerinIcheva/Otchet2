@@ -16,9 +16,9 @@ namespace PyrusApiClient
             try
             {
                 var config = LoadConfig();
-                if (config == null || string.IsNullOrWhiteSpace(config.AuthToken))
+                if (config == null || string.IsNullOrWhiteSpace(config.Login) || string.IsNullOrWhiteSpace(config.SecurityKey))
                 {
-                    Console.WriteLine("Не удалось загрузить конфигурацию или токен отсутствует.");
+                    Console.WriteLine("Не удалось загрузить конфигурацию или отсутствуют логин/security_key.");
                     return;
                 }
 
@@ -69,9 +69,20 @@ namespace PyrusApiClient
                 using (var client = new HttpClient())
                 {
                     client.BaseAddress = new Uri(config.ApiBaseUrl);
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.AuthToken}");
                     client.DefaultRequestHeaders.Accept.Add(
                         new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+                    // Аутентификация и получение токена
+                    Console.WriteLine("Пытаюсь аутентифицироваться...");
+                    var authToken = await GetAuthToken(client, config.Login, config.SecurityKey);
+                    if (string.IsNullOrWhiteSpace(authToken))
+                    {
+                        Console.WriteLine("Не удалось получить токен аутентификации. Проверьте логин и security_key.");
+                        return;
+                    }
+
+                    Console.WriteLine("Аутентификация успешна!");
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {authToken}");
 
                     // Шаг 1: Получение всех задач в Telegram
                     var telegramTasks = await GetTasksCount(client, new
@@ -270,13 +281,50 @@ namespace PyrusApiClient
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка: {ex.Message}");
+                Console.WriteLine($"Критическая ошибка: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Внутренняя ошибка: {ex.InnerException.Message}");
+                }
             }
 
             Console.WriteLine("\nНажмите любую клавишу для выхода...");
             Console.ReadKey();
         }
+        static async Task<string> GetAuthToken(HttpClient client, string login, string securityKey)
+        {
+            try
+            {
+                var authRequest = new
+                {
+                    login = login,
+                    security_key = securityKey
+                };
 
+                var jsonContent = JsonConvert.SerializeObject(authRequest);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+              
+                var response = await client.PostAsync("/v4/auth", content);
+
+
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var authResponse = JsonConvert.DeserializeObject<AuthResponse>(responseContent);
+                    return authResponse?.access_token ?? authResponse?.AccessToken;
+                }
+
+                Console.WriteLine($"Ошибка аутентификации. Код: {response.StatusCode}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Исключение при аутентификации: {ex.Message}");
+                return null;
+            }
+        }
         static async Task<int> GetTasksCount(HttpClient client, object requestBody)
         {
             var jsonContent = JsonConvert.SerializeObject(requestBody);
@@ -328,9 +376,10 @@ namespace PyrusApiClient
                     var defaultConfig = new Config
                     {
                         ApiBaseUrl = "https://api.pyrus.com",
-                        AuthToken = "your_auth_token_here",
-                        AuthorId = 1223544, // ID автора задачи
-                        ResponsibleId = 1223544 // ID ответственного
+                        Login = "terina.babicheva.02@mail.ru",
+                        SecurityKey = "ydgGwWpSc8e30lnVbyzYfPc3Mx~px3CGr87mTg0YlgJ1m4NBPMfYxL2QDNOCwnxfR144t5IGmbPjcTJylawdKj93hGZyhza0",
+                        AuthorId = 1223544,
+                        ResponsibleId = 1223544
                     };
                     File.WriteAllText(configPath, JsonConvert.SerializeObject(defaultConfig, Formatting.Indented));
                     Console.WriteLine("Создан файл конфигурации. Заполните его своими данными.");
@@ -347,12 +396,19 @@ namespace PyrusApiClient
         }
     }
 
+    public class AuthResponse
+    {
+        public string access_token { get; set; }
+        public string AccessToken { get; set; } // Для совместимости с разными версиями API
+    }
+
     public class Config
     {
-        public string ApiBaseUrl { get; set; }
-        public string AuthToken { get; set; }
+        public string ApiBaseUrl { get; set; } = "https://api.pyrus.com";
+        public string Login { get; set; }
+        public string SecurityKey { get; set; }
         public int AuthorId { get; set; }
-        public int ResponsibleId { get; set; } 
+        public int ResponsibleId { get; set; }
     }
 
     public class TasksResponse
